@@ -1,61 +1,84 @@
-# OmniSocial
+# OmniSocial Blockchain
 
-A decentralized social media platform built on Polygon zkEVM.
+A decentralized social platform built on blockchain technology with DAO governance.
 
 ## Features
 
-- Decentralized identity with Persona NFTs
-- Social feed with on-chain content
-- Portfolio analytics
-- DAO governance
-- Privacy-focused design
+- 🏦 **DAO Governance**: Community-driven decision making
+- 👤 **Persona NFTs**: Unique digital identities
+- 💬 **Social Posts**: Decentralized content sharing
+- 💰 **Treasury Management**: Community fund management
+- 🗳️ **Proposal System**: Transparent voting mechanism
+- 🔐 **Wallet Integration**: Secure crypto wallet support
+- 🌓 **Dark/Light Mode**: User-friendly interface
 
 ## Tech Stack
 
-- Next.js 13
-- TypeScript
-- Tailwind CSS
-- Wagmi
-- Viem
-- Radix UI
-- Polygon zkEVM
+- **Frontend**: Next.js, React, TypeScript
+- **Smart Contracts**: Solidity, Hardhat
+- **Blockchain**: Ethereum
+- **UI**: Tailwind CSS, shadcn/ui
+- **Wallet**: wagmi v2
+- **Storage**: IPFS
+- **Testing**: Hardhat tests
 
 ## Getting Started
 
-1. Clone the repository
+### Prerequisites
+
+- Node.js (v18 or later)
+- npm or yarn
+- Hardhat
+- MetaMask or other Web3 wallet
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/OmniSocialBlockchain/dapp.git
+cd dapp
+```
+
 2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-4. Open [http://localhost:3000](http://localhost:3000) in your browser
-
-## Project Structure
-
+```bash
+npm install
 ```
-src/
-├── app/                 # Next.js app directory
-├── components/          # React components
-├── config/             # Configuration files
-├── context/            # React context providers
-├── features/           # Feature-specific components
-├── hooks/              # Custom React hooks
-├── lib/                # Utility functions
-├── styles/             # Global styles
-└── types/              # TypeScript type definitions
+
+3. Set up environment variables:
+```bash
+cp env.example .env
+# Edit .env with your configuration
 ```
+
+4. Start the development server:
+```bash
+npm run dev
+```
+
+## Smart Contracts
+
+The project includes several smart contracts:
+
+- `OmniDAO.sol`: DAO governance contract
+- `PersonaNFT.sol`: NFT-based identity system
+- `OmniToken.sol`: Utility token
+- `SocialPost.sol`: Content management
+- `Treasury.sol`: Fund management
 
 ## Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+We welcome contributions! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Security
+
+For security concerns, please email security@omnisocial.dev
+
+## Support
+
+- Documentation: [docs.omnisocial.dev](https://docs.omnisocial.dev)
+- Discord: [Join our community](https://discord.gg/omnisocial)
+- Twitter: [@OmniSocial](https://twitter.com/OmniSocial) 
