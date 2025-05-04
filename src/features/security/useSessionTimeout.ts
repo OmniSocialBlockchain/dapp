@@ -1,25 +1,73 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { useUser } from '@/context/UserContext';
 import { useToast } from '@/hooks/use-toast';
+import { useDisconnect } from 'wagmi';
 
-const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
+interface SessionTimeoutOptions {
+  timeoutInMinutes?: number;
+  warningInMinutes?: number;
+  onTimeout?: () => void;
+}
 
-export function useSessionTimeout() {
-  const { disconnect } = useUser();
+const DEFAULT_TIMEOUT = 15; // 15 minutes
+const DEFAULT_WARNING = 5; // 5 minutes
+
+export function useSessionTimeout({
+  timeoutInMinutes = DEFAULT_TIMEOUT,
+  warningInMinutes = DEFAULT_WARNING,
+  onTimeout,
+}: SessionTimeoutOptions = {}) {
+  const { walletAddress } = useUser();
+  const { disconnect } = useDisconnect();
   const { toast } = useToast();
-  let timeoutId: NodeJS.Timeout;
+  const timeoutRef = useRef<NodeJS.Timeout>();
+  const warningRef = useRef<NodeJS.Timeout>();
+  const [showWarning, setShowWarning] = useState(false);
+
+  const handleTimeout = useCallback(() => {
+    if (walletAddress) {
+      disconnect();
+    }
+    if (onTimeout) {
+      onTimeout();
+    }
+    toast({
+      title: 'Session Timeout',
+      description: walletAddress 
+        ? 'Your session has expired. Please reconnect your wallet.'
+        : 'Your session has expired. Please log in again.',
+      variant: 'destructive',
+    });
+  }, [disconnect, onTimeout, toast, walletAddress]);
+
+  const handleWarning = useCallback(() => {
+    setShowWarning(true);
+    toast({
+      title: 'Session Expiring Soon',
+      description: `Your session will expire in ${warningInMinutes} minutes.`,
+      duration: warningInMinutes * 60 * 1000,
+    });
+  }, [toast, warningInMinutes]);
 
   const resetTimeout = useCallback(() => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => {
-      disconnect();
-      toast({
-        title: 'Session Timeout',
-        description: 'Your session has expired. Please reconnect your wallet.',
-        variant: 'destructive',
-      });
-    }, SESSION_TIMEOUT);
-  }, [disconnect, toast]);
+    // Clear existing timers
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    if (warningRef.current) {
+      clearTimeout(warningRef.current);
+    }
+
+    // Reset warning state
+    setShowWarning(false);
+
+    // Set new timers
+    const warningTime = (timeoutInMinutes - warningInMinutes) * 60 * 1000;
+    const timeoutTime = timeoutInMinutes * 60 * 1000;
+
+    warningRef.current = setTimeout(handleWarning, warningTime);
+    timeoutRef.current = setTimeout(handleTimeout, timeoutTime);
+  }, [handleWarning, handleTimeout, timeoutInMinutes, warningInMinutes]);
 
   useEffect(() => {
     // Set up event listeners for user activity
@@ -33,10 +81,20 @@ export function useSessionTimeout() {
 
     // Cleanup
     return () => {
-      clearTimeout(timeoutId);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (warningRef.current) {
+        clearTimeout(warningRef.current);
+      }
       events.forEach(event => {
         window.removeEventListener(event, resetTimeout);
       });
     };
   }, [resetTimeout]);
+
+  return {
+    showWarning,
+    resetTimeout,
+  };
 } 

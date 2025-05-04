@@ -6,25 +6,26 @@ import { useContractRead } from 'wagmi';
 import { formatEther } from 'viem';
 import { formatDistanceToNow } from 'date-fns';
 import Factory from '@/abi/OmniWalletFactory.json';
+import { Address } from 'viem';
 
 interface Transaction {
   hash: string;
-  from: string;
-  to: string;
+  from: Address;
+  to: Address;
   value: bigint;
   timestamp: number;
   status: 'success' | 'failed';
 }
 
 interface WalletTransactionsProps {
-  address: `0x${string}`;
+  address: Address;
 }
 
 export function WalletTransactions({ address }: WalletTransactionsProps) {
   const { toast } = useToast();
 
   const { data: transactions, isLoading, isError, error } = useContractRead({
-    address: process.env.NEXT_PUBLIC_FACTORY as `0x${string}`,
+    address: process.env.NEXT_PUBLIC_FACTORY as Address,
     abi: Factory.abi,
     functionName: 'getWalletTransactions',
     args: [address],
@@ -49,7 +50,7 @@ export function WalletTransactions({ address }: WalletTransactionsProps) {
           size="sm"
           onClick={() => toast({
             title: 'Error',
-            description: 'Failed to load transactions. Please try again.',
+            description: error?.message || 'Failed to load transactions',
             variant: 'destructive',
           })}
         >
@@ -59,15 +60,10 @@ export function WalletTransactions({ address }: WalletTransactionsProps) {
     );
   }
 
-  if (!txList || txList.length === 0) {
+  if (!txList?.length) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4">Recent Transactions</h2>
-        <div className="space-y-4">
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            No transactions found
-          </div>
-        </div>
+      <div className="text-center p-4">
+        <p className="text-muted-foreground">No transactions found</p>
       </div>
     );
   }
@@ -76,49 +72,28 @@ export function WalletTransactions({ address }: WalletTransactionsProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Recent Transactions</h2>
-        <p className="text-sm text-muted-foreground">
-          {txList.length} transaction{txList.length !== 1 ? 's' : ''}
-        </p>
       </div>
 
-      <div className="grid gap-4">
+      <div className="space-y-2">
         {txList.map((tx) => (
-          <div
-            key={tx.hash}
-            className="flex items-center justify-between p-4 border rounded-lg"
-          >
-            <div className="flex items-center gap-4">
-              <div className={`w-2 h-2 rounded-full ${tx.status === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />
+          <div key={tx.hash} className="p-4 border rounded-lg">
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">
-                  {formatEther(tx.value)} ETH
+                  {tx.status === 'success' ? 'Sent' : 'Failed'} {formatEther(tx.value)} ETH
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {formatDistanceToNow(new Date(tx.timestamp * 1000), { addSuffix: true })}
+                  To: {tx.to.slice(0, 6)}...{tx.to.slice(-4)}
                 </p>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(`https://etherscan.io/tx/${tx.hash}`)}
-              >
-                View
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  navigator.clipboard.writeText(tx.hash);
-                  toast({
-                    title: 'Copied',
-                    description: 'Transaction hash copied to clipboard',
-                  });
-                }}
-              >
-                Copy
-              </Button>
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground">
+                  {formatDistanceToNow(tx.timestamp * 1000, { addSuffix: true })}
+                </p>
+                <p className={`text-xs ${tx.status === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                  {tx.status}
+                </p>
+              </div>
             </div>
           </div>
         ))}

@@ -6,9 +6,10 @@ import { useUser } from '@/context/UserContext';
 import { useAccount } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import { ConnectButton } from '@/components/wallet/ConnectButton';
-import { PersonaSelector } from '@/components/persona/PersonaSelector';
+import { PersonaSwitcher } from '@/components/persona/PersonaSelector';
 import { ThemeProvider } from "@/components/theme/ThemeProvider"
 import { Toaster } from "@/components/ui/toaster"
+import { useSessionTimeout } from '@/features/security/useSessionTimeout';
 
 interface LayoutProps {
   children: ReactNode;
@@ -18,12 +19,16 @@ export function Layout({ children }: LayoutProps) {
   const { isConnected } = useAccount();
   const { activePersona } = useUser();
 
+  // Initialize session timeout
+  useSessionTimeout({
+    timeoutInMinutes: 30, // 30 minutes session timeout
+    warningInMinutes: 5, // 5 minutes warning before timeout
+  });
+
   return (
     <ThemeProvider
-      attribute="class"
       defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
+      storageKey="omni-social-theme"
     >
       <div className="min-h-screen bg-background">
         <nav className="bg-white dark:bg-gray-800 shadow-sm">
@@ -52,7 +57,7 @@ export function Layout({ children }: LayoutProps) {
               </div>
               <div className="flex items-center space-x-4">
                 {isConnected && activePersona && (
-                  <PersonaSelector />
+                  <PersonaSwitcher />
                 )}
                 <ConnectButton />
               </div>

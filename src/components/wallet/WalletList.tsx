@@ -7,9 +7,10 @@ import Factory from '@/abi/OmniWalletFactory.json';
 import { useContractRead } from 'wagmi';
 import { useWalletError } from './WalletErrorBoundary';
 import { useEffect } from 'react';
+import { Address } from 'viem';
 
 interface Wallet {
-  address: string;
+  address: Address;
   balance: string;
   isActive: boolean;
 }
@@ -21,22 +22,24 @@ export function WalletList() {
 
   // Fetch wallet count
   const { data: walletCount, isLoading: isLoadingCount, error: countError } = useContractRead({
-    address: process.env.NEXT_PUBLIC_FACTORY as `0x${string}`,
+    address: process.env.NEXT_PUBLIC_FACTORY as Address,
     abi: Factory.abi,
     functionName: 'getWalletCount',
+    args: [address || '0x0000000000000000000000000000000000000000'],
     enabled: !!address,
   });
 
   // Fetch all wallets
   const { data: wallets, isLoading: isLoadingWallets, error: walletsError } = useContractRead({
-    address: process.env.NEXT_PUBLIC_FACTORY as `0x${string}`,
+    address: process.env.NEXT_PUBLIC_FACTORY as Address,
     abi: Factory.abi,
     functionName: 'getAllWallets',
+    args: [address || '0x0000000000000000000000000000000000000000'],
     enabled: !!address,
   });
 
   const isLoading = isLoadingCount || isLoadingWallets;
-  const walletList = wallets as string[] | undefined;
+  const walletList = wallets as Address[] | undefined;
 
   // Handle errors
   useEffect(() => {
@@ -64,7 +67,7 @@ export function WalletList() {
     );
   }
 
-  if (!walletList || walletList.length === 0) {
+  if (!walletList?.length) {
     return (
       <div className="text-center p-4">
         <p className="text-muted-foreground">No wallets found</p>
@@ -98,13 +101,6 @@ export function WalletList() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open(`/wallet/${walletAddress}`)}
-              >
-                View
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
                 onClick={() => {
                   navigator.clipboard.writeText(walletAddress);
                   toast({
@@ -114,6 +110,13 @@ export function WalletList() {
                 }}
               >
                 Copy
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(`https://etherscan.io/address/${walletAddress}`)}
+              >
+                View
               </Button>
             </div>
           </div>

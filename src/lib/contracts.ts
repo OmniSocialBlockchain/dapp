@@ -1,5 +1,4 @@
-import { useAccount, useContractRead, useContractWrite, useWaitForTransactionReceipt } from "wagmi";
-import { type WriteContractParameters } from "wagmi/actions";
+import { useAccount, useContractRead, useContractWrite } from "wagmi";
 import { CONTRACT_ADDRESSES } from "@/config/addresses";
 import { personaNFTABI, socialPostABI, omniTokenABI, omniDAOABI } from "@/config/abis";
 import { type Address } from "viem";
@@ -23,9 +22,9 @@ export function usePersonaNFT() {
     enabled: !!activePersona,
   });
 
-  const { data: createPersonaHash, isPending: isCreatePending, writeContract: createPersona } = useContractWrite();
+  const { writeContract: createPersona, isPending: isCreatePending } = useContractWrite();
 
-  const { data: activatePersonaHash, isPending: isActivatePending, writeContract: activatePersona } = useContractWrite();
+  const { writeContract: activatePersona, isPending: isActivatePending } = useContractWrite();
 
   const createPersonaWithConfig = (args: unknown[]) => {
     return createPersona({
@@ -33,7 +32,7 @@ export function usePersonaNFT() {
       abi: personaNFTABI,
       functionName: "createPersona",
       args,
-    } as WriteContractParameters);
+    });
   };
 
   const activatePersonaWithConfig = (args: unknown[]) => {
@@ -42,7 +41,7 @@ export function usePersonaNFT() {
       abi: personaNFTABI,
       functionName: "activatePersona",
       args,
-    } as WriteContractParameters);
+    });
   };
 
   return {
@@ -52,17 +51,15 @@ export function usePersonaNFT() {
     activatePersona: activatePersonaWithConfig,
     isCreatePending,
     isActivatePending,
-    createPersonaHash,
-    activatePersonaHash,
   };
 }
 
 export function useSocialPost() {
-  const { data: createPostHash, isPending: isCreatePending, writeContract: createPost } = useContractWrite();
+  const { address } = useAccount();
 
-  const { data: likePostHash, isPending: isLikePending, writeContract: likePost } = useContractWrite();
-
-  const { data: addCommentHash, isPending: isCommentPending, writeContract: addComment } = useContractWrite();
+  const { writeContract: createPost, isPending: isCreatePending } = useContractWrite();
+  const { writeContract: likePost, isPending: isLikePending } = useContractWrite();
+  const { writeContract: addComment, isPending: isCommentPending } = useContractWrite();
 
   const createPostWithConfig = (args: unknown[]) => {
     return createPost({
@@ -70,7 +67,7 @@ export function useSocialPost() {
       abi: socialPostABI,
       functionName: "createPost",
       args,
-    } as WriteContractParameters);
+    });
   };
 
   const likePostWithConfig = (args: unknown[]) => {
@@ -79,7 +76,7 @@ export function useSocialPost() {
       abi: socialPostABI,
       functionName: "likePost",
       args,
-    } as WriteContractParameters);
+    });
   };
 
   const addCommentWithConfig = (args: unknown[]) => {
@@ -88,7 +85,7 @@ export function useSocialPost() {
       abi: socialPostABI,
       functionName: "addComment",
       args,
-    } as WriteContractParameters);
+    });
   };
 
   return {
@@ -98,9 +95,6 @@ export function useSocialPost() {
     isCreatePending,
     isLikePending,
     isCommentPending,
-    createPostHash,
-    likePostHash,
-    addCommentHash,
   };
 }
 
@@ -115,7 +109,7 @@ export function useOmniToken() {
     enabled: !!address,
   });
 
-  const { data: approveHash, isPending: isApprovePending, writeContract: approve } = useContractWrite();
+  const { writeContract: approve, isPending: isApprovePending } = useContractWrite();
 
   const approveWithConfig = (args: unknown[]) => {
     return approve({
@@ -123,21 +117,22 @@ export function useOmniToken() {
       abi: omniTokenABI,
       functionName: "approve",
       args,
-    } as WriteContractParameters);
+    });
   };
 
   return {
     balance,
     approve: approveWithConfig,
     isApprovePending,
-    approveHash,
   };
 }
 
 export function useOmniDAO() {
-  const { data: proposeHash, isPending: isProposePending, writeContract: propose } = useContractWrite();
+  const { address } = useAccount();
 
-  const { data: castVoteHash, isPending: isVotePending, writeContract: castVote } = useContractWrite();
+  const { writeContract: propose, isPending: isProposePending } = useContractWrite();
+  const { writeContract: castVote, isPending: isVotePending } = useContractWrite();
+  const { writeContract: executeProposal, isPending: isExecutePending } = useContractWrite();
 
   const proposeWithConfig = (args: unknown[]) => {
     return propose({
@@ -145,7 +140,7 @@ export function useOmniDAO() {
       abi: omniDAOABI,
       functionName: "propose",
       args,
-    } as WriteContractParameters);
+    });
   };
 
   const castVoteWithConfig = (args: unknown[]) => {
@@ -154,15 +149,24 @@ export function useOmniDAO() {
       abi: omniDAOABI,
       functionName: "castVote",
       args,
-    } as WriteContractParameters);
+    });
+  };
+
+  const executeProposalWithConfig = (args: unknown[]) => {
+    return executeProposal({
+      address: CONTRACT_ADDRESSES.polygonZkEvmTestnet.omniDAO as Address,
+      abi: omniDAOABI,
+      functionName: "executeProposal",
+      args,
+    });
   };
 
   return {
     propose: proposeWithConfig,
     castVote: castVoteWithConfig,
+    executeProposal: executeProposalWithConfig,
     isProposePending,
     isVotePending,
-    proposeHash,
-    castVoteHash,
+    isExecutePending,
   };
 } 

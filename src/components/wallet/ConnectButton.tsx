@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { useCallback } from 'react';
 import { toast } from 'sonner';
-import { type Connector } from 'wagmi';
 
 export function ConnectButton() {
   const { isConnected, address } = useAccount();
@@ -16,6 +15,7 @@ export function ConnectButton() {
         throw new Error('No wallet connector available');
       }
       await connect({ connector: connectors[0] });
+      toast.success('Wallet connected successfully');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to connect wallet';
       toast.error(errorMessage);
@@ -26,6 +26,7 @@ export function ConnectButton() {
   const handleDisconnect = useCallback(async () => {
     try {
       await disconnect();
+      toast.success('Wallet disconnected successfully');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to disconnect wallet';
       toast.error(errorMessage);
@@ -52,28 +53,14 @@ export function ConnectButton() {
   }
 
   return (
-    <div className="relative">
-      <Button
-        variant="default"
-        onClick={handleConnect}
-        disabled={isPending || !connectors[0]}
-        className="min-w-[120px]"
-        aria-label="Connect wallet"
-      >
-        {isPending ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Connecting...
-          </>
-        ) : (
-          'Connect Wallet'
-        )}
-      </Button>
-      {error && (
-        <p className="mt-2 text-sm text-red-500" role="alert">
-          {error.message}
-        </p>
-      )}
-    </div>
+    <Button
+      variant="default"
+      onClick={handleConnect}
+      className="min-w-[120px]"
+      disabled={isPending}
+      aria-label="Connect wallet"
+    >
+      {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Connect'}
+    </Button>
   );
 } 

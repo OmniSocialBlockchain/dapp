@@ -1,4 +1,4 @@
-import { useContractWrite, usePrepareContractWrite } from 'wagmi';
+import { useContractWrite } from 'wagmi';
 import { useToast } from '@/components/ui/use-toast';
 import { useWalletError } from '@/components/wallet/WalletErrorBoundary';
 import Wallet from '@/abi/OmniWallet.json';
@@ -13,54 +13,31 @@ export function useExecute(wallet: `0x${string}`, params?: ExecuteParams) {
   const { toast } = useToast();
   const { handleError } = useWalletError();
 
-  const { config, error: prepareError } = usePrepareContractWrite({
-    address: wallet,
-    abi: Wallet.abi,
-    functionName: 'execute',
-    args: params ? [params.target, params.value, params.data] : undefined,
-    enabled: !!params
-  });
-
-  const { 
-    write: execute,
-    isLoading,
-    isSuccess,
-    error: writeError 
-  } = useContractWrite(config);
+  const { writeContract: execute, isPending } = useContractWrite();
 
   const executeTransaction = async () => {
     try {
-      if (!execute) {
-        throw new Error('Failed to prepare transaction');
+      if (!params) {
+        throw new Error('No transaction parameters provided');
       }
 
-      if (prepareError) {
-        handleError(prepareError, 'prepare execute');
-        return;
-      }
+      await execute({
+        address: wallet,
+        abi: Wallet.abi,
+        functionName: 'execute',
+        args: [params.target, params.value, params.data],
+      });
 
-      await execute();
-
-      if (writeError) {
-        handleError(writeError, 'execute transaction');
-        return;
-      }
-
-      if (isSuccess) {
-        toast({
-          title: 'Success',
-          description: 'Transaction executed successfully',
-        });
-      }
-    } catch (error) {
-      handleError(error as Error, 'execute transaction');
+      toast.success('Transaction executed successfully');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to execute transaction';
+      handleError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
   return {
     executeTransaction,
-    isLoading,
-    isSuccess,
-    error: writeError || prepareError
+    isPending,
   };
 } 

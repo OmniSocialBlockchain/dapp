@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useAccount, useWaitForTransaction, useContractWrite, usePrepareContractWrite } from 'wagmi';
+import { useAccount, useContractWrite } from 'wagmi';
 import { parseEther } from 'viem';
 import { useToast } from '@/components/ui/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import Factory from '@/abi/OmniWalletFactory.json';
+import { CONTRACT_ADDRESSES } from '@/config/addresses';
 
 // Type definitions
 interface Log {
@@ -46,146 +47,59 @@ export function useCreateWallet(): CreateWalletResponse {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
   const [estimatedGas, setEstimatedGas] = useState<bigint | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
-  // Prepare the contract write
-  const { 
-    config, 
-    error: prepareError,
-    isLoading: isPreparing,
-    isError: isPrepareError
-  } = usePrepareContractWrite({
-    address: process.env.NEXT_PUBLIC_FACTORY as `0x${string}`,
-    abi: Factory.abi,
-    functionName: 'createWallet',
-    args: [],
-    value: parseEther('0.01'),
-  });
+  const { writeContract: createWallet, isPending: isLoading, isSuccess } = useContractWrite();
 
-  // Execute the contract write
-  const { 
-    write, 
-    isLoading,
-    isSuccess,
-    isError,
-    error,
-    data
-  } = useContractWrite(config);
-
-  // Wait for transaction confirmation
-  const { 
-    isLoading: isConfirming,
-    isSuccess: isConfirmed,
-    data: txReceipt
-  } = useWaitForTransaction({
-    hash: data?.hash,
-    confirmations: 1,
-  });
-
-  useEffect(() => {
-    if (config?.request?.gas) {
-      setEstimatedGas(config.request.gas);
-    }
-  }, [config?.request?.gas]);
-
-  // Handle wallet creation
-  const createWallet = useCallback(() => {
-    if (!isConnected) {
-      toast({
-        title: 'Error',
-        description: 'Please connect your wallet first',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (isPreparing) {
-      toast({
-        title: 'Preparing',
-        description: 'Please wait while we prepare the transaction',
-      });
-      return;
-    }
-
-    if (prepareError) {
-      toast({
-        title: 'Error',
-        description: prepareError.message,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (!write) {
-      toast({
-        title: 'Error',
-        description: 'Failed to prepare wallet creation',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    write();
-  }, [isConnected, isPreparing, prepareError, write, toast]);
-
-  // Handle transaction success
-  useEffect(() => {
-    if (isSuccess && data?.hash) {
-      setTransactionHash(data.hash);
-      toast({
-        title: 'Transaction Sent',
-        description: 'Your wallet creation transaction has been sent',
-      });
-    }
-  }, [isSuccess, data?.hash, toast]);
-
-  // Handle transaction confirmation
-  useEffect(() => {
-    if (isConfirmed && txReceipt) {
-      const receipt = txReceipt as TransactionReceipt;
-      if (receipt.status === 'success') {
-        const walletCreatedLog = receipt.logs.find(
-          (log) => log.topics[0] === '0x0000000000000000000000000000000000000000000000000000000000000000'
-        );
-        if (walletCreatedLog) {
-          const newWalletAddress = `0x${walletCreatedLog.data.slice(26)}`;
-          setWalletAddress(newWalletAddress);
-          queryClient.invalidateQueries({ queryKey: ['userWallets'] });
-          toast({
-            title: 'Success',
-            description: `Wallet created successfully at ${newWalletAddress}`,
-          });
-        }
-      } else {
-        toast({
-          title: 'Error',
-          description: 'Transaction reverted',
-          variant: 'destructive',
-        });
+  const createWalletHandler = useCallback(async () => {
+    try {
+      if (!address) {
+        throw new Error('Please connect your wallet');
       }
-    }
-  }, [isConfirmed, txReceipt, queryClient, toast]);
 
-  // Handle errors
-  useEffect(() => {
-    if (isError && error) {
+      const result = await createWallet({
+        address: CONTRACT_ADDRESSES.polygonZkEvmTestnet.omniWalletFactory as `0x${string}`,
+        abi: Factory.abi,
+        functionName: 'createWallet',
+        args: [address],
+      });
+
+      setTransactionHash(result);
+      toast({
+        title: 'Success',
+        description: 'Wallet creation transaction sent',
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create wallet';
+      setError(err instanceof Error ? err : new Error(errorMessage));
       toast({
         title: 'Error',
-        description: error.message,
+        description: errorMessage,
         variant: 'destructive',
       });
     }
-  }, [isError, error, toast]);
+  }, [address, createWallet, toast]);
+
+  useEffect(() => {
+    if (isSuccess && transactionHash) {
+      queryClient.invalidateQueries({ queryKey: ['wallets'] });
+      toast({
+        title: 'Success',
+        description: 'Wallet created successfully',
+      });
+    }
+  }, [isSuccess, transactionHash, queryClient, toast]);
 
   return {
-    isLoading: isLoading || isConfirming,
-    isSuccess: isConfirmed,
-    isError,
+    isLoading,
+    isSuccess,
+    isError: !!error,
     error,
-    createWallet,
+    createWallet: createWalletHandler,
     walletAddress,
     estimatedGas,
-    isPreparing,
-    prepareError,
+    isPreparing: false,
+    prepareError: null,
     transactionHash,
   };
 }

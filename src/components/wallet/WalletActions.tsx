@@ -3,32 +3,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { useContractWrite, usePrepareContractWrite } from 'wagmi';
+import { useContractWrite } from 'wagmi';
 import { parseEther } from 'viem';
 import Factory from '@/abi/OmniWalletFactory.json';
 import { useWalletError } from './WalletErrorBoundary';
+import { Address } from 'viem';
 
 interface WalletActionsProps {
-  address: `0x${string}`;
+  address: Address;
 }
 
 export function WalletActions({ address }: WalletActionsProps) {
   const { toast } = useToast();
   const { handleError } = useWalletError();
-  const [recipient, setRecipient] = useState('');
+  const [recipient, setRecipient] = useState<Address>('0x0000000000000000000000000000000000000000' as Address);
   const [amount, setAmount] = useState('');
 
-  // Prepare send transaction
-  const { config: sendConfig, error: prepareError } = usePrepareContractWrite({
-    address: address as `0x${string}`,
-    abi: Factory.abi,
-    functionName: 'sendTokens',
-    args: [recipient, parseEther(amount || '0')],
-    enabled: !!recipient && !!amount,
-  });
-
-  // Execute send transaction
-  const { write: sendTokens, isLoading, isSuccess } = useContractWrite(sendConfig);
+  const { writeContract: sendTokens, isPending: isLoading } = useContractWrite();
 
   const handleSend = async () => {
     try {
@@ -41,21 +32,19 @@ export function WalletActions({ address }: WalletActionsProps) {
         return;
       }
 
-      if (prepareError) {
-        handleError(prepareError, 'prepare send');
-        return;
-      }
+      await sendTokens({
+        address,
+        abi: Factory.abi,
+        functionName: 'sendTokens',
+        args: [recipient, parseEther(amount || '0')],
+      });
 
-      if (!sendTokens) {
-        toast({
-          title: 'Error',
-          description: 'Failed to prepare transaction',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      sendTokens();
+      toast({
+        title: 'Success',
+        description: 'Tokens sent successfully',
+      });
+      setRecipient('0x0000000000000000000000000000000000000000' as Address);
+      setAmount('');
     } catch (error) {
       handleError(error as Error, 'send tokens');
     }
@@ -75,7 +64,7 @@ export function WalletActions({ address }: WalletActionsProps) {
               <label className="text-sm text-muted-foreground">Recipient Address</label>
               <Input
                 value={recipient}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRecipient(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRecipient(e.target.value as Address)}
                 placeholder="0x..."
                 disabled={isLoading}
               />
@@ -103,7 +92,7 @@ export function WalletActions({ address }: WalletActionsProps) {
                   Sending...
                 </>
               ) : (
-                'Send'
+                'Send Tokens'
               )}
             </Button>
           </div>

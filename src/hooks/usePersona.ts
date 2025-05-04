@@ -27,6 +27,8 @@ export function usePersona() {
   const [isExecuting, setIsExecuting] = useState(false);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [currentPersona, setCurrentPersona] = useState<Persona | null>(null);
+  const [metadataHash, setMetadataHash] = useState<string>('');
+  const [personaIdToLink, setPersonaIdToLink] = useState<string>('');
 
   const { data: personaCount } = useContractRead({
     ...personaContract,
@@ -34,6 +36,24 @@ export function usePersona() {
     args: [address],
     enabled: !!address,
   });
+
+  const { executeTransaction: executeCreatePersona } = useExecute(
+    walletAddress as `0x${string}`,
+    metadataHash ? {
+      target: process.env.NEXT_PUBLIC_PERSONA_NFT as `0x${string}`,
+      value: BigInt(0),
+      data: `0x${Buffer.from(metadataHash).toString('hex')}`,
+    } : undefined
+  );
+
+  const { executeTransaction: executeLinkPersona } = useExecute(
+    walletAddress as `0x${string}`,
+    personaIdToLink ? {
+      target: process.env.NEXT_PUBLIC_WALLET as `0x${string}`,
+      value: BigInt(0),
+      data: `0x${Buffer.from(personaIdToLink).toString('hex')}`,
+    } : undefined
+  );
 
   useEffect(() => {
     if (personaCount) {
@@ -84,20 +104,12 @@ export function usePersona() {
         throw new Error('Failed to upload persona metadata to IPFS');
       }
 
-      const { hash: metadataHash } = await metadataResponse.json();
+      const { hash } = await metadataResponse.json();
+      setMetadataHash(hash);
 
       // Execute transaction to create persona
       setIsExecuting(true);
-      const { executeTransaction } = useExecute(
-        walletAddress as `0x${string}`,
-        {
-          target: process.env.NEXT_PUBLIC_PERSONA_NFT as `0x${string}`,
-          value: BigInt(0),
-          data: `0x${Buffer.from(metadataHash).toString('hex')}`,
-        }
-      );
-
-      await executeTransaction();
+      await executeCreatePersona();
 
       toast({
         title: 'Success',
@@ -108,8 +120,9 @@ export function usePersona() {
     } finally {
       setIsUploading(false);
       setIsExecuting(false);
+      setMetadataHash('');
     }
-  }, [walletAddress, handleError, toast]);
+  }, [walletAddress, handleError, toast, executeCreatePersona]);
 
   const linkPersona = useCallback(async (personaId: string) => {
     try {
@@ -117,17 +130,9 @@ export function usePersona() {
         throw new Error('No wallet connected');
       }
 
+      setPersonaIdToLink(personaId);
       setIsExecuting(true);
-      const { executeTransaction } = useExecute(
-        walletAddress as `0x${string}`,
-        {
-          target: process.env.NEXT_PUBLIC_WALLET as `0x${string}`,
-          value: BigInt(0),
-          data: `0x${Buffer.from(personaId).toString('hex')}`,
-        }
-      );
-
-      await executeTransaction();
+      await executeLinkPersona();
 
       toast({
         title: 'Success',
@@ -137,8 +142,9 @@ export function usePersona() {
       handleError(error as Error, 'link persona');
     } finally {
       setIsExecuting(false);
+      setPersonaIdToLink('');
     }
-  }, [walletAddress, handleError, toast]);
+  }, [walletAddress, handleError, toast, executeLinkPersona]);
 
   const switchPersona = (personaId: string) => {
     const persona = personas.find((p) => p.id === personaId);

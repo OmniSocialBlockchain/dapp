@@ -8,9 +8,10 @@ import { useBalance } from 'wagmi';
 import Factory from '@/abi/OmniWalletFactory.json';
 import { useWalletError } from './WalletErrorBoundary';
 import { useEffect } from 'react';
+import { Address } from 'viem';
 
 interface WalletDetailsProps {
-  address: `0x${string}`;
+  address: Address;
 }
 
 export function WalletDetails({ address }: WalletDetailsProps) {
@@ -22,7 +23,7 @@ export function WalletDetails({ address }: WalletDetailsProps) {
   });
 
   const { data: isActive, isLoading: isLoadingStatus, error: statusError } = useContractRead({
-    address: process.env.NEXT_PUBLIC_FACTORY as `0x${string}`,
+    address: process.env.NEXT_PUBLIC_FACTORY as Address,
     abi: Factory.abi,
     functionName: 'isWalletActive',
     args: [address],
@@ -99,9 +100,9 @@ export function WalletDetails({ address }: WalletDetailsProps) {
           </Button>
           <Button
             variant="outline"
-            onClick={() => window.open(`https://opensea.io/accounts/${address}`)}
+            onClick={() => window.open(`https://etherscan.io/address/${address}#tokentxns`)}
           >
-            View on OpenSea
+            View Token Transfers
           </Button>
         </div>
       </div>

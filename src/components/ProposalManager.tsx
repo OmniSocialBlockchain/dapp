@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useAccount, useContractRead, useContractWrite, useWaitForTransactionReceipt } from "wagmi";
-import { Address } from "viem";
+import { useAccount, useContractRead, useContractWrite, useWatchContractEvent } from "wagmi";
+import { Address, Log } from "viem";
 import { omniDAO } from "@/contracts/OmniDAO";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -50,260 +50,206 @@ export function ProposalManager({ daoAddress }: ProposalManagerProps) {
     address: daoAddress,
     abi: omniDAO.abi,
     functionName: "getVotingPower",
-    args: [address],
+    args: [address || "0x0000000000000000000000000000000000000000"],
   });
 
-  const { data: createProposalHash, writeContract: createProposal } = useContractWrite();
-
-  const { data: castVoteHash, writeContract: castVote } = useContractWrite();
-
-  const { data: executeProposalHash, writeContract: executeProposal } = useContractWrite();
-
-  const { isLoading: isCreateLoading } = useWaitForTransactionReceipt({
-    hash: createProposalHash,
+  // Read all proposals at once
+  const { data: proposalData } = useContractRead({
+    address: daoAddress,
+    abi: omniDAO.abi,
+    functionName: "getProposals",
+    args: proposalCount ? [BigInt(0), proposalCount] : undefined,
+    enabled: !!proposalCount,
   });
 
-  const { isLoading: isVoteLoading } = useWaitForTransactionReceipt({
-    hash: castVoteHash,
+  const { writeContract: createProposal, isPending: isCreatePending } = useContractWrite();
+  const { writeContract: castVote, isPending: isVotePending } = useContractWrite();
+  const { writeContract: executeProposal, isPending: isExecutePending } = useContractWrite();
+
+  useWatchContractEvent({
+    address: daoAddress,
+    abi: omniDAO.abi,
+    eventName: "ProposalCreated",
+    onLogs: (logs: Log[]) => {
+      toast.success("New proposal created");
+    },
   });
 
-  const { isLoading: isExecuteLoading } = useWaitForTransactionReceipt({
-    hash: executeProposalHash,
+  useWatchContractEvent({
+    address: daoAddress,
+    abi: omniDAO.abi,
+    eventName: "VoteCast",
+    onLogs: (logs: Log[]) => {
+      toast.success("Vote cast successfully");
+    },
+  });
+
+  useWatchContractEvent({
+    address: daoAddress,
+    abi: omniDAO.abi,
+    eventName: "ProposalExecuted",
+    onLogs: (logs: Log[]) => {
+      toast.success("Proposal executed successfully");
+    },
   });
 
   useEffect(() => {
-    const fetchProposals = async () => {
-      if (!proposalCount) return;
-
-      const proposalPromises = Array.from(
-        { length: Number(proposalCount) },
-        async (_, i) => {
-          const { data: proposalData } = await useContractRead({
-            address: daoAddress,
-            abi: omniDAO.abi,
-            functionName: "proposals",
-            args: [BigInt(i)],
-          }) as { data: ProposalData };
-
-          if (!proposalData) {
-            throw new Error(`Failed to fetch proposal ${i}`);
-          }
-
-          return {
-            id: BigInt(i),
-            title: proposalData[0],
-            description: proposalData[1],
-            proposer: proposalData[2],
-            startBlock: proposalData[3],
-            endBlock: proposalData[4],
-            forVotes: proposalData[5],
-            againstVotes: proposalData[6],
-            executed: proposalData[7],
-          };
-        }
-      );
-
-      const fetchedProposals = await Promise.all(proposalPromises);
-      setProposals(fetchedProposals);
-    };
-
-    fetchProposals();
-  }, [proposalCount, daoAddress]);
+    if (proposalData) {
+      const formattedProposals = (proposalData as ProposalData[]).map((data, index) => ({
+        id: BigInt(index),
+        title: data[0],
+        description: data[1],
+        proposer: data[2],
+        startBlock: data[3],
+        endBlock: data[4],
+        forVotes: data[5],
+        againstVotes: data[6],
+        executed: data[7],
+      }));
+      setProposals(formattedProposals);
+    }
+  }, [proposalData]);
 
   const handleCreateProposal = async () => {
-    if (!title || !description) {
-      setError("Please fill in all fields");
-      return;
-    }
-
-    if (!address) {
-      setError("Please connect your wallet");
-      return;
-    }
-
-    setIsLoading(true);
-    setError("");
     try {
+      setIsLoading(true);
+      setError("");
+
+      if (!title || !description) {
+        throw new Error("Please fill in all fields");
+      }
+
       await createProposal({
         address: daoAddress,
         abi: omniDAO.abi,
-        functionName: "createProposal",
+        functionName: "propose",
         args: [title, description],
       });
+
       toast.success("Proposal created successfully");
       setTitle("");
       setDescription("");
-    } catch (error) {
-      console.error("Error creating proposal:", error);
-      setError("Failed to create proposal");
-      toast.error("Failed to create proposal");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to create proposal";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleVote = async (proposalId: bigint, support: boolean) => {
-    if (!address) {
-      setError("Please connect your wallet");
-      return;
-    }
-
-    setIsLoading(true);
-    setError("");
     try {
+      setIsLoading(true);
+      setError("");
+
       await castVote({
         address: daoAddress,
         abi: omniDAO.abi,
         functionName: "castVote",
         args: [proposalId, support],
       });
-      toast.success(`Vote cast ${support ? "for" : "against"} proposal`);
-    } catch (error) {
-      console.error("Error casting vote:", error);
-      setError("Failed to cast vote");
-      toast.error("Failed to cast vote");
+
+      toast.success(`Vote ${support ? "for" : "against"} proposal ${proposalId.toString()} cast successfully`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to cast vote";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleExecuteProposal = async (proposalId: bigint) => {
-    if (!address) {
-      setError("Please connect your wallet");
-      return;
-    }
-
-    setIsLoading(true);
-    setError("");
     try {
+      setIsLoading(true);
+      setError("");
+
       await executeProposal({
         address: daoAddress,
         abi: omniDAO.abi,
-        functionName: "executeProposal",
+        functionName: "execute",
         args: [proposalId],
       });
-      toast.success("Proposal executed successfully");
-    } catch (error) {
-      console.error("Error executing proposal:", error);
-      setError("Failed to execute proposal");
-      toast.error("Failed to execute proposal");
+
+      toast.success(`Proposal ${proposalId.toString()} executed successfully`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to execute proposal";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Create Proposal Form */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h3 className="text-xl font-semibold mb-4">Create New Proposal</h3>
-        <div className="space-y-4">
-          <input
-            type="text"
-            placeholder="Proposal Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-          />
-
-          <textarea
-            placeholder="Proposal Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={4}
-            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-          />
-
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Voting Power: {tokenBalance?.toString() || "0"}
-            </p>
-            <button
-              onClick={handleCreateProposal}
-              disabled={isLoading || isCreateLoading}
-              className="bg-primary-600 text-white py-2 px-4 rounded hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2"
-            >
-              {isLoading || isCreateLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                "Create Proposal"
-              )}
-            </button>
-          </div>
-        </div>
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <h2 className="text-xl font-bold">Create Proposal</h2>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title"
+          className="w-full p-2 border rounded"
+        />
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Description"
+          className="w-full p-2 border rounded"
+          rows={4}
+        />
+        <button
+          onClick={handleCreateProposal}
+          disabled={isLoading || isCreatePending}
+          className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50"
+        >
+          {isLoading || isCreatePending ? "Creating..." : "Create Proposal"}
+        </button>
+        {error && <p className="text-red-500">{error}</p>}
       </div>
 
-      {/* Proposals List */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h3 className="text-xl font-semibold mb-4">Active Proposals</h3>
-        {proposals.length === 0 ? (
-          <p className="text-gray-600 dark:text-gray-400">No active proposals</p>
-        ) : (
-          <div className="space-y-4">
-            {proposals.map((proposal) => (
-              <div
-                key={proposal.id.toString()}
-                className="border rounded dark:border-gray-700 p-4"
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold">Proposals</h2>
+        {proposals.map((proposal) => (
+          <div key={proposal.id.toString()} className="p-4 border rounded space-y-2">
+            <h3 className="font-bold">{proposal.title}</h3>
+            <p>{proposal.description}</p>
+            <p>Proposer: {proposal.proposer}</p>
+            <p>Start Block: {proposal.startBlock.toString()}</p>
+            <p>End Block: {proposal.endBlock.toString()}</p>
+            <p>For Votes: {proposal.forVotes.toString()}</p>
+            <p>Against Votes: {proposal.againstVotes.toString()}</p>
+            <p>Executed: {proposal.executed ? "Yes" : "No"}</p>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => handleVote(proposal.id, true)}
+                disabled={isLoading || isVotePending || proposal.executed}
+                className="px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50"
               >
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-medium">{proposal.title}</h4>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    #{proposal.id.toString()}
-                  </span>
-                </div>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  {proposal.description}
-                </p>
-                <div className="flex items-center justify-between">
-                  <div className="space-x-4">
-                    <button
-                      onClick={() => handleVote(proposal.id, true)}
-                      disabled={isLoading || isVoteLoading}
-                      className="bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {isLoading || isVoteLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : null}
-                      For ({proposal.forVotes.toString()})
-                    </button>
-                    <button
-                      onClick={() => handleVote(proposal.id, false)}
-                      disabled={isLoading || isVoteLoading}
-                      className="bg-red-600 text-white py-1 px-3 rounded hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {isLoading || isVoteLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : null}
-                      Against ({proposal.againstVotes.toString()})
-                    </button>
-                  </div>
-                  {!proposal.executed && (
-                    <button
-                      onClick={() => handleExecuteProposal(proposal.id)}
-                      disabled={isLoading || isExecuteLoading}
-                      className="bg-primary-600 text-white py-1 px-3 rounded hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {isLoading || isExecuteLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : null}
-                      Execute
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+                Vote For
+              </button>
+              <button
+                onClick={() => handleVote(proposal.id, false)}
+                disabled={isLoading || isVotePending || proposal.executed}
+                className="px-4 py-2 bg-red-500 text-white rounded disabled:opacity-50"
+              >
+                Vote Against
+              </button>
+              {!proposal.executed && (
+                <button
+                  onClick={() => handleExecuteProposal(proposal.id)}
+                  disabled={isLoading || isExecutePending}
+                  className="px-4 py-2 bg-purple-500 text-white rounded disabled:opacity-50"
+                >
+                  Execute
+                </button>
+              )}
+            </div>
           </div>
-        )}
+        ))}
       </div>
-
-      {error && (
-        <div className="p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded">
-          {error}
-        </div>
-      )}
     </div>
   );
 } 

@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
-import { useAccount, useContractRead, useContractWrite } from "wagmi";
+import { useState, useEffect, useCallback } from "react";
+import { useAccount, useContractRead, useContractWrite, useWatchContractEvent } from "wagmi";
 import { personaNFT } from "@/contracts/PersonaNFT";
 import { useIPFS } from "@/hooks/useIPFS";
+import { Address, Log } from "viem";
+import { toast } from "sonner";
 
 interface Persona {
   username: string;
@@ -9,7 +11,16 @@ interface Persona {
   bio: string;
   avatar: string;
   isActive: boolean;
+  tokenId: bigint;
 }
+
+type PersonaData = [
+  string, // username
+  string, // label
+  string, // bio
+  string, // avatar
+  boolean // isActive
+];
 
 export function PersonaManager() {
   const { address } = useAccount();
@@ -24,78 +35,97 @@ export function PersonaManager() {
   const { uploadToIPFS } = useIPFS();
 
   const { data: personaIds } = useContractRead({
-    ...personaNFT,
+    address: personaNFT.address,
+    abi: personaNFT.abi,
     functionName: "getPersonasByOwner",
-    args: [address],
-    watch: true,
+    args: [address || "0x0000000000000000000000000000000000000000"],
   });
 
-  const { write: createPersona } = useContractWrite({
-    ...personaNFT,
-    functionName: "createPersona",
+  // Read all personas at once
+  const { data: personasData } = useContractRead({
+    address: personaNFT.address,
+    abi: personaNFT.abi,
+    functionName: "getPersonas",
+    args: personaIds ? [personaIds] : undefined,
+    enabled: !!personaIds?.length,
   });
 
-  const { write: updatePersona } = useContractWrite({
-    ...personaNFT,
-    functionName: "updatePersona",
+  const { writeContract: createPersona, isPending: isCreatePending } = useContractWrite();
+  const { writeContract: updatePersona, isPending: isUpdatePending } = useContractWrite();
+  const { writeContract: deactivatePersona, isPending: isDeactivatePending } = useContractWrite();
+  const { writeContract: reactivatePersona, isPending: isReactivatePending } = useContractWrite();
+
+  useWatchContractEvent({
+    address: personaNFT.address,
+    abi: personaNFT.abi,
+    eventName: "PersonaCreated",
+    onLogs: (logs: Log[]) => {
+      toast.success("New persona created");
+    },
   });
 
-  const { write: deactivatePersona } = useContractWrite({
-    ...personaNFT,
-    functionName: "deactivatePersona",
+  useWatchContractEvent({
+    address: personaNFT.address,
+    abi: personaNFT.abi,
+    eventName: "PersonaUpdated",
+    onLogs: (logs: Log[]) => {
+      toast.success("Persona updated successfully");
+    },
   });
 
-  const { write: reactivatePersona } = useContractWrite({
-    ...personaNFT,
-    functionName: "reactivatePersona",
+  useWatchContractEvent({
+    address: personaNFT.address,
+    abi: personaNFT.abi,
+    eventName: "PersonaDeactivated",
+    onLogs: (logs: Log[]) => {
+      toast.success("Persona deactivated successfully");
+    },
+  });
+
+  useWatchContractEvent({
+    address: personaNFT.address,
+    abi: personaNFT.abi,
+    eventName: "PersonaReactivated",
+    onLogs: (logs: Log[]) => {
+      toast.success("Persona reactivated successfully");
+    },
   });
 
   useEffect(() => {
-    const fetchPersonas = async () => {
-      if (!personaIds) return;
-
-      const personaData = await Promise.all(
-        personaIds.map(async (tokenId) => {
-          const { data } = await useContractRead({
-            ...personaNFT,
-            functionName: "getPersona",
-            args: [tokenId],
-          });
-          return data;
-        })
-      );
-
-      setPersonas(personaData);
-    };
-
-    fetchPersonas();
-  }, [personaIds]);
+    if (personasData) {
+      const formattedPersonas = (personasData as PersonaData[]).map((data, index) => ({
+        username: data[0],
+        label: data[1],
+        bio: data[2],
+        avatar: data[3],
+        isActive: data[4],
+        tokenId: BigInt(index),
+      }));
+      setPersonas(formattedPersonas);
+    }
+  }, [personasData]);
 
   const handleCreatePersona = async () => {
     try {
       setIsLoading(true);
-      const metadata = {
-        name: newPersona.username,
-        description: newPersona.bio,
-        image: newPersona.avatar,
-        attributes: [
-          { trait_type: "Label", value: newPersona.label },
-        ],
-      };
 
-      const tokenURI = await uploadToIPFS(JSON.stringify(metadata));
+      if (!newPersona.username || !newPersona.label || !newPersona.bio) {
+        throw new Error("Please fill in all required fields");
+      }
+
+      let avatarHash = newPersona.avatar;
+      if (newPersona.avatar) {
+        avatarHash = await uploadToIPFS(newPersona.avatar);
+      }
 
       await createPersona({
-        args: [
-          address,
-          newPersona.username,
-          newPersona.label,
-          newPersona.bio,
-          newPersona.avatar,
-          tokenURI,
-        ],
+        address: personaNFT.address,
+        abi: personaNFT.abi,
+        functionName: "createPersona",
+        args: [newPersona.username, newPersona.label, newPersona.bio, avatarHash],
       });
 
+      toast.success("Persona created successfully");
       setNewPersona({
         username: "",
         label: "",
@@ -103,128 +133,152 @@ export function PersonaManager() {
         avatar: "",
       });
     } catch (error) {
-      console.error("Error creating persona:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to create persona";
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleUpdatePersona = async (tokenId: number, updatedPersona: Persona) => {
+  const handleUpdatePersona = async (tokenId: bigint, updatedPersona: Persona) => {
     try {
       setIsLoading(true);
+
+      if (!updatedPersona.username || !updatedPersona.label || !updatedPersona.bio) {
+        throw new Error("Please fill in all required fields");
+      }
+
+      let avatarHash = updatedPersona.avatar;
+      if (updatedPersona.avatar) {
+        avatarHash = await uploadToIPFS(updatedPersona.avatar);
+      }
+
       await updatePersona({
-        args: [
-          tokenId,
-          updatedPersona.username,
-          updatedPersona.label,
-          updatedPersona.bio,
-          updatedPersona.avatar,
-        ],
+        address: personaNFT.address,
+        abi: personaNFT.abi,
+        functionName: "updatePersona",
+        args: [tokenId, updatedPersona.username, updatedPersona.label, updatedPersona.bio, avatarHash],
       });
+
+      toast.success("Persona updated successfully");
     } catch (error) {
-      console.error("Error updating persona:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to update persona";
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeactivatePersona = async (tokenId: bigint) => {
+    try {
+      setIsLoading(true);
+
+      await deactivatePersona({
+        address: personaNFT.address,
+        abi: personaNFT.abi,
+        functionName: "deactivatePersona",
+        args: [tokenId],
+      });
+
+      toast.success("Persona deactivated successfully");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to deactivate persona";
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReactivatePersona = async (tokenId: bigint) => {
+    try {
+      setIsLoading(true);
+
+      await reactivatePersona({
+        address: personaNFT.address,
+        abi: personaNFT.abi,
+        functionName: "reactivatePersona",
+        args: [tokenId],
+      });
+
+      toast.success("Persona reactivated successfully");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to reactivate persona";
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h2 className="text-2xl font-bold mb-6">Manage Your Personas</h2>
-
-      {/* Create New Persona */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
-        <h3 className="text-xl font-semibold mb-4">Create New Persona</h3>
-        <div className="space-y-4">
-          <input
-            type="text"
-            placeholder="Username"
-            value={newPersona.username}
-            onChange={(e) =>
-              setNewPersona({ ...newPersona, username: e.target.value })
-            }
-            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-          />
-          <input
-            type="text"
-            placeholder="Label"
-            value={newPersona.label}
-            onChange={(e) =>
-              setNewPersona({ ...newPersona, label: e.target.value })
-            }
-            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-          />
-          <textarea
-            placeholder="Bio"
-            value={newPersona.bio}
-            onChange={(e) =>
-              setNewPersona({ ...newPersona, bio: e.target.value })
-            }
-            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-          />
-          <input
-            type="text"
-            placeholder="Avatar URL"
-            value={newPersona.avatar}
-            onChange={(e) =>
-              setNewPersona({ ...newPersona, avatar: e.target.value })
-            }
-            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-          />
-          <button
-            onClick={handleCreatePersona}
-            disabled={isLoading}
-            className="w-full bg-primary-600 text-white py-2 px-4 rounded hover:bg-primary-700 disabled:opacity-50"
-          >
-            {isLoading ? "Creating..." : "Create Persona"}
-          </button>
-        </div>
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <h2 className="text-xl font-bold">Create New Persona</h2>
+        <input
+          type="text"
+          value={newPersona.username}
+          onChange={(e) => setNewPersona({ ...newPersona, username: e.target.value })}
+          placeholder="Username"
+          className="w-full p-2 border rounded"
+        />
+        <input
+          type="text"
+          value={newPersona.label}
+          onChange={(e) => setNewPersona({ ...newPersona, label: e.target.value })}
+          placeholder="Label"
+          className="w-full p-2 border rounded"
+        />
+        <textarea
+          value={newPersona.bio}
+          onChange={(e) => setNewPersona({ ...newPersona, bio: e.target.value })}
+          placeholder="Bio"
+          className="w-full p-2 border rounded"
+          rows={4}
+        />
+        <input
+          type="text"
+          value={newPersona.avatar}
+          onChange={(e) => setNewPersona({ ...newPersona, avatar: e.target.value })}
+          placeholder="Avatar URL"
+          className="w-full p-2 border rounded"
+        />
+        <button
+          onClick={handleCreatePersona}
+          disabled={isLoading || isCreatePending}
+          className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50"
+        >
+          {isLoading || isCreatePending ? "Creating..." : "Create Persona"}
+        </button>
       </div>
 
-      {/* Existing Personas */}
-      <div className="space-y-6">
-        {personas.map((persona, index) => (
-          <div
-            key={index}
-            className="bg-white dark:bg-gray-800 rounded-lg shadow p-6"
-          >
-            <div className="flex items-center space-x-4">
-              <img
-                src={persona.avatar}
-                alt={persona.username}
-                className="w-16 h-16 rounded-full"
-              />
-              <div>
-                <h3 className="text-xl font-semibold">{persona.username}</h3>
-                <p className="text-gray-600 dark:text-gray-400">
-                  {persona.label}
-                </p>
-              </div>
-            </div>
-            <p className="mt-4 text-gray-700 dark:text-gray-300">
-              {persona.bio}
-            </p>
-            <div className="mt-4 flex space-x-4">
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold">Your Personas</h2>
+        {personas.map((persona) => (
+          <div key={persona.tokenId.toString()} className="p-4 border rounded space-y-2">
+            <h3 className="font-bold">{persona.username}</h3>
+            <p>Label: {persona.label}</p>
+            <p>Bio: {persona.bio}</p>
+            <p>Status: {persona.isActive ? "Active" : "Inactive"}</p>
+            <div className="flex space-x-2">
               <button
-                onClick={() => handleUpdatePersona(index, persona)}
-                disabled={isLoading}
-                className="bg-primary-600 text-white py-2 px-4 rounded hover:bg-primary-700 disabled:opacity-50"
+                onClick={() => handleUpdatePersona(persona.tokenId, persona)}
+                disabled={isLoading || isUpdatePending}
+                className="px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50"
               >
                 Update
               </button>
               {persona.isActive ? (
                 <button
-                  onClick={() => deactivatePersona({ args: [index] })}
-                  disabled={isLoading}
-                  className="bg-red-600 text-white py-2 px-4 rounded hover:bg-red-700 disabled:opacity-50"
+                  onClick={() => handleDeactivatePersona(persona.tokenId)}
+                  disabled={isLoading || isDeactivatePending}
+                  className="px-4 py-2 bg-red-500 text-white rounded disabled:opacity-50"
                 >
                   Deactivate
                 </button>
               ) : (
                 <button
-                  onClick={() => reactivatePersona({ args: [index] })}
-                  disabled={isLoading}
-                  className="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 disabled:opacity-50"
+                  onClick={() => handleReactivatePersona(persona.tokenId)}
+                  disabled={isLoading || isReactivatePending}
+                  className="px-4 py-2 bg-purple-500 text-white rounded disabled:opacity-50"
                 >
                   Reactivate
                 </button>

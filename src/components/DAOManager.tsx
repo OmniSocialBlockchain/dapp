@@ -1,7 +1,17 @@
 import { useState } from "react";
-import { useAccount, useContractWrite, useContractEvent } from "wagmi";
+import { useAccount, useContractWrite, useWatchContractEvent } from "wagmi";
 import { daoFactory } from "@/contracts/DAOFactory";
 import { Address } from "viem";
+import { toast } from "sonner";
+import { Log } from "viem";
+
+interface DAOCreatedLog extends Log {
+  args: {
+    creator: Address;
+    dao: Address;
+    name: string;
+  };
+}
 
 export function DAOManager() {
   const { address } = useAccount();
@@ -12,21 +22,20 @@ export function DAOManager() {
   const [error, setError] = useState<string>("");
   const [createdDAOs, setCreatedDAOs] = useState<{ address: Address; name: string }[]>([]);
 
-  const { write: createDAO } = useContractWrite({
-    ...daoFactory,
-    functionName: "createDAO",
-  });
+  const { writeContract: createDAO, isPending: isCreatePending } = useContractWrite();
 
-  useContractEvent({
-    ...daoFactory,
+  useWatchContractEvent({
+    address: daoFactory.address,
+    abi: daoFactory.abi,
     eventName: "DAOCreated",
-    listener: (logs) => {
-      logs.forEach((log) => {
+    onLogs: (logs: DAOCreatedLog[]) => {
+      logs.forEach((log: DAOCreatedLog) => {
         if (log.args.creator === address) {
           setCreatedDAOs((prev) => [...prev, { 
-            address: log.args.dao as Address, 
-            name: log.args.name as string 
+            address: log.args.dao, 
+            name: log.args.name 
           }]);
+          toast.success(`DAO ${log.args.name} created successfully`);
         }
       });
     },
@@ -48,11 +57,15 @@ export function DAOManager() {
     setError("");
     try {
       await createDAO({
+        address: daoFactory.address,
+        abi: daoFactory.abi,
+        functionName: "createDAO",
         args: [name, tokenAddress, quorum],
       });
     } catch (error) {
       console.error("Error creating DAO:", error);
       setError("Failed to create DAO");
+      toast.error("Failed to create DAO");
     } finally {
       setIsLoading(false);
     }
@@ -100,43 +113,33 @@ export function DAOManager() {
 
           <button
             onClick={handleCreateDAO}
-            disabled={isLoading}
-            className="w-full bg-primary-600 text-white py-2 px-4 rounded hover:bg-primary-700 disabled:opacity-50"
+            disabled={isLoading || isCreatePending}
+            className="w-full py-2 px-4 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
           >
-            {isLoading ? "Creating DAO..." : "Create DAO"}
+            {isLoading || isCreatePending ? "Creating..." : "Create DAO"}
           </button>
         </div>
       </div>
 
       {/* Created DAOs List */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h3 className="text-xl font-semibold mb-4">Your DAOs</h3>
-        {createdDAOs.length === 0 ? (
-          <p className="text-gray-600 dark:text-gray-400">No DAOs created yet</p>
-        ) : (
+      {createdDAOs.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-xl font-semibold mb-4">Your DAOs</h3>
           <div className="space-y-4">
             {createdDAOs.map((dao) => (
               <div
                 key={dao.address}
-                className="flex items-center justify-between p-4 border rounded dark:border-gray-700"
+                className="p-4 border rounded dark:border-gray-700"
               >
-                <div>
-                  <h4 className="font-medium">{dao.name}</h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {dao.address}
-                  </p>
-                </div>
-                <a
-                  href={`/dao/${dao.address}`}
-                  className="text-primary-600 hover:text-primary-700"
-                >
-                  View DAO
-                </a>
+                <h4 className="font-medium">{dao.name}</h4>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {dao.address}
+                </p>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 } 
