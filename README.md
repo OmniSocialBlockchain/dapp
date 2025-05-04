@@ -80,5 +80,9 @@ For security concerns, please email security@omnisocial.dev
 ## Support
 
 - Documentation: [docs.omnisocial.dev](https://docs.omnisocial.dev)
-- Discord: [Join our community](https://discord.gg/omnisocial)
-- Twitter: [@OmniSocial](https://twitter.com/OmniSocial) 
+- Discord: [Join our community](https://discord.gg/CeEsh6mQYt)
+- Farcaster: [@omnisocial](https://warpcast.com/omnisocial)
+- Lens: [@omnisocial](https://hey.xyz/u/omnisocial)
+- Bluesky: [@omnisocial.dev](https://bsky.app/profile/omnisocial.dev)
+- Mastodon: [@OmniSocial](https://infosec.exchange/@OmniSocial)
+- Nostr: [@omnisocial](https://primal.net/p/nprofile1qqszjktnul4d583m085uje79z7yqefqt8kn9xtrd5d4nu5uvml5l4nqwn9zum) 
